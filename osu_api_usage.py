@@ -6,10 +6,10 @@ debug = False
 def parse_mplink():
     if not debug:
         print("Вставьте ссылку на матч")
-        match_url = input()  # https://osu.ppy.sh/community/matches/109474638
+        match_url = input()  # https://osu.ppy.sh/community/matches/111534249
         match_id = match_url.split("/")[-1]
     else:
-        match_id = 109474638
+        match_id = 111534249
 
     with open("secrets.json", "r") as file:
         secrets = json.loads(file.read())
