@@ -1,13 +1,22 @@
 import requests
 import json
+import re
 
 debug = False
+
 
 def parse_mplink():
     if not debug:
         print("Вставьте ссылку на матч")
         match_url = input()  # https://osu.ppy.sh/community/matches/111534249
-        match_id = match_url.split("/")[-1]
+        if '/' in match_url:
+            match_id = re.findall('matches\/\d+', match_url)
+            if len(match_id) < 1:
+                print("Неверная ссылка на матч!")
+                return
+            match_id = int(match_id[0].split('/')[1])  # example: 'matches/113456' -> 113456: int
+        else:
+            match_id = int(match_url)
     else:
         match_id = 111534249
 
@@ -16,38 +25,52 @@ def parse_mplink():
     token = requests.post("https://osu.ppy.sh/oauth/token",
                           data="client_id={}&client_secret={}&grant_type=client_credentials&scope=public"
                           .format(secrets["client_id"], secrets["client_secret"]),
-                          headers={"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"})  #
+                          headers={"Accept": "application/json",
+                                   "Content-Type": "application/x-www-form-urlencoded"})  #
     if token.status_code != 200:
         print("Программа не смогла обратиться к API osu, проверьте интернет соединение или настройки json файла")
         exit(-1)
 
     access_token = token.json()["access_token"]
 
-    match_info_raw = requests.get("https://osu.ppy.sh/api/v2/matches/{}".format(match_id),
-                                  headers={"Authorization": "Bearer {}".format(access_token)})
+    match_info_raw = requests.get(f"https://osu.ppy.sh/api/v2/matches/{match_id}",
+                                  headers={"Authorization": f"Bearer {access_token}"})
     if match_info_raw.status_code != 200:
         print("Неверная ссылка на матч :( ")
         exit(-1)
     match_info_json = match_info_raw.json()
     user_dict = dict()
     for user in match_info_json["users"]:
-        user_dict[user["id"]] = {"username": user["username"], "score_sum": 0}
+        user_id = user["id"]
+        user_dict[user_id] = {"username": user["username"], "score_sum": 0, 'played_maps': {}}
 
-    maps_played = 0
-    matchcost_etalon = 5 * (10**5)
     for event in match_info_json["events"]:
         if event['detail']['type'] == 'other':
             if len(event['game']['scores']) > 0:
-                maps_played += 1
-                for score in event['game']['scores']:
-                    user_dict[score["user_id"]]["score_sum"] += score["score"]
+                for score_struct in event['game']['scores']:
+                    beatmap_id = event['game']['beatmap_id']
+                    user_id = score_struct["user_id"]
+                    if beatmap_id in user_dict[user_id]["played_maps"]:   # if a player has played the map twice or more
+                        old_score = user_dict[user_id]["played_maps"][beatmap_id]['score']
+                        if old_score <= score_struct['score']:
+                            user_dict[user_id]["played_maps"][beatmap_id] = score_struct
+                    else:
+                        user_dict[user_id]["played_maps"].update({beatmap_id: score_struct})
+    matchcost_etalon = 5 * (10 ** 5)  # 500k
     for user_id, user_dict_username in user_dict.items():
-        user_dict_username["average_score"] = user_dict_username["score_sum"] / maps_played
+        maps_played = 0
+        user_played_maps = user_dict_username['played_maps']
+        user_dict_username['score_sum'] = 0
+        for map_id, score_struct in user_played_maps.items():
+            maps_played += 1
+            user_dict_username['score_sum'] += score_struct['score']
+        user_dict_username["average_score"] = user_dict_username["score_sum"] / len(user_dict_username["played_maps"])
     sorted_list_by_average = sorted(user_dict.items(), key=lambda item: item[1]["average_score"], reverse=True)
-    print("Maps played: {}".format(maps_played))
-    for item in sorted_list_by_average:
-        print(f"avg.score: {item[1]['average_score']}, match_cost: {item[1]['average_score'] / matchcost_etalon},  "
-              f"score sum: { item[1]['score_sum']}  by {item[1]['username']}, user id: {item[0]}")
+    for user_id, user_details in sorted_list_by_average:
+        print(f"avg.score: {user_details['average_score']}, "
+              f"match_cost: {user_details['average_score'] / matchcost_etalon}, "
+              f"played maps: {len(user_details['played_maps'])} "
+              f"score sum: {user_details['score_sum']}  by {user_details['username']}, user id: {user_id}")
 
 
 def parse_scrim(warmups=0):
@@ -63,7 +86,8 @@ def parse_scrim(warmups=0):
     token = requests.post("https://osu.ppy.sh/oauth/token",
                           data="client_id={}&client_secret={}&grant_type=client_credentials&scope=public"
                           .format(secrets["client_id"], secrets["client_secret"]),
-                          headers={"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"})  #
+                          headers={"Accept": "application/json",
+                                   "Content-Type": "application/x-www-form-urlencoded"})  #
     if token.status_code != 200:
         print("Программа не смогла обратиться к API osu, проверьте интернет соединение или настройки json файла")
         exit(-1)
@@ -110,6 +134,7 @@ def parse_scrim(warmups=0):
               f"score sum: { item[1]['score_sum']}  by {item[1]['username']}, user id: {item[0]}")
     """
 
+
 def get_user_id_by_username(username):
     with open("secrets.json", "r") as file:
         secrets = json.loads(file.read())
@@ -124,7 +149,7 @@ def get_user_id_by_username(username):
     access_token = token.json()["access_token"]
 
     user_info_raw = requests.get("https://osu.ppy.sh/api/v2/users/{}/osu".format(username),
-                                  headers={"Authorization": "Bearer {}".format(access_token)})
+                                 headers={"Authorization": "Bearer {}".format(access_token)})
     if user_info_raw.status_code != 200:
         print("Неверный username :( ")
         exit(-1)
