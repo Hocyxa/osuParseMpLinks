@@ -2,7 +2,7 @@ import requests
 import json
 import re
 
-debug = True
+debug = False
 
 
 def parse_mplink(match_arg=None, warmups=0, skip_last=0, verbose=True):
@@ -224,8 +224,9 @@ if __name__ == "__main__":
         json.dump(players, f, ensure_ascii=False, indent=4)
     """
     # get_user_by_username("Boriska")
-    # parse_mplink(warmups=0, skip_last=0)
-    matches = ["https://osu.ppy.sh/community/matches/114155474", "https://osu.ppy.sh/community/matches/114155177",
+    parse_mplink(warmups=0, skip_last=0)
+
+    """matches = ["https://osu.ppy.sh/community/matches/114155474", "https://osu.ppy.sh/community/matches/114155177",
                "https://osu.ppy.sh/community/matches/114131550", "https://osu.ppy.sh/community/matches/113799771",
                "https://osu.ppy.sh/community/matches/113690530", "https://osu.ppy.sh/community/matches/113343257",
                "https://osu.ppy.sh/community/matches/113101878", "https://osu.ppy.sh/community/matches/113069141",
@@ -233,4 +234,4 @@ if __name__ == "__main__":
     for match in matches:
         result = json.loads(parse_scrim(match_arg=match, verbose=False))
         print(f"{result[0][1]['username']} {result[0][1]['maps_won']} - {result[1][1]['maps_won']} "
-              f"{result[1][1]['username']}")
+              f"{result[1][1]['username']}")"""
