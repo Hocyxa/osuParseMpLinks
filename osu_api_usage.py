@@ -5,7 +5,7 @@ import re
 debug = False
 
 
-def parse_mplink():
+def parse_mplink(warmups=0):
     if not debug:
         print("Вставьте ссылку на матч")
         match_url = input()  # https://osu.ppy.sh/community/matches/111534249
@@ -18,7 +18,7 @@ def parse_mplink():
         else:
             match_id = int(match_url)
     else:
-        match_id = 111534249
+        match_id = 111555364
 
     with open("secrets.json", "r") as file:
         secrets = json.loads(file.read())
@@ -43,19 +43,37 @@ def parse_mplink():
     for user in match_info_json["users"]:
         user_id = user["id"]
         user_dict[user_id] = {"username": user["username"], "score_sum": 0, 'played_maps': {}}
+    first_event_id = match_info_json['first_event_id']
+    last_event_id = match_info_json['latest_event_id']
+    event_id = first_event_id
+    all_scores = []
+    # парсинг всех ивентов
+    while event_id < last_event_id:  # пока что так, но возможно это ошибка
+        match_info_raw = requests.get(f"https://osu.ppy.sh/api/v2/matches/{match_id}?after={event_id}",
+                                      headers={"Authorization": f"Bearer {access_token}"})
+        match_info_json = match_info_raw.json()
+        event_id = match_info_json['events'][-1]['id']
+        for event in match_info_json['events']:
+            if event['detail']['type'] == 'other' and len(event['game']['scores']) > 0:
+                scores_struct = event['game']['scores']  #  .update({"beatmap_id": all_scores['game']['beatmap_id']})
+                scores_struct = {"scores": scores_struct, "beatmap_id": event['game']['beatmap_id']}
+                all_scores.append(scores_struct)
+    # обработка полученных результатов
+    for score_struct in all_scores:
+        if warmups > 0:
+            warmups -= 1
+            continue
+        beatmap_id = score_struct['beatmap_id']
+        scores = score_struct['scores']
+        for score in scores:
+            user_id = score["user_id"]
+            if beatmap_id in user_dict[user_id]["played_maps"]:  # if a player has played the map twice or more
+                old_score = user_dict[user_id]["played_maps"][beatmap_id]['score']
+                if old_score <= score['score']:
+                    user_dict[user_id]["played_maps"][beatmap_id] = score
+            else:
+                user_dict[user_id]["played_maps"].update({beatmap_id: score})
 
-    for event in match_info_json["events"]:
-        if event['detail']['type'] == 'other':
-            if len(event['game']['scores']) > 0:
-                for score_struct in event['game']['scores']:
-                    beatmap_id = event['game']['beatmap_id']
-                    user_id = score_struct["user_id"]
-                    if beatmap_id in user_dict[user_id]["played_maps"]:   # if a player has played the map twice or more
-                        old_score = user_dict[user_id]["played_maps"][beatmap_id]['score']
-                        if old_score <= score_struct['score']:
-                            user_dict[user_id]["played_maps"][beatmap_id] = score_struct
-                    else:
-                        user_dict[user_id]["played_maps"].update({beatmap_id: score_struct})
     matchcost_etalon = 5 * (10 ** 5)  # 500k
     for user_id, user_dict_username in user_dict.items():
         maps_played = 0
@@ -64,7 +82,10 @@ def parse_mplink():
         for map_id, score_struct in user_played_maps.items():
             maps_played += 1
             user_dict_username['score_sum'] += score_struct['score']
-        user_dict_username["average_score"] = user_dict_username["score_sum"] / len(user_dict_username["played_maps"])
+        if len(user_dict_username["played_maps"]) > 0:
+            user_dict_username["average_score"] = user_dict_username["score_sum"] / len(user_dict_username["played_maps"])
+        else:
+            user_dict_username["average_score"] = 0
     sorted_list_by_average = sorted(user_dict.items(), key=lambda item: item[1]["average_score"], reverse=True)
     for user_id, user_details in sorted_list_by_average:
         print(f"avg.score: {user_details['average_score']}, "
@@ -171,5 +192,5 @@ if __name__ == "__main__":
         json.dump(players, f, ensure_ascii=False, indent=4)
     """
     # get_user_by_username("Boriska")
-    parse_mplink()
+    parse_mplink(warmups=0)
     # parse_scrim()
