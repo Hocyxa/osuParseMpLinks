@@ -5,21 +5,48 @@ import re
 debug = True
 
 
-def parse_mplink(match_id_arg=None, warmups=0, skip_last=0, verbose=True):
-    if not debug and not match_id_arg:
+def parse_mplink(match_arg=None, warmups=0, skip_last=0, verbose=True):
+    """
+    Parse a mp link and give information about avg_score
+    :param match_arg:
+        URL/ID to a match
+    :param warmups:
+        number of warmups (amount of maps that will be skipped from beginning)
+    :param skip_last:
+        amount of maps that
+    :param verbose:
+        will or will not the additional information be printed
+    :return:
+        scores_to_return : list - parsed scores (warmup and skip_last are filters applied)
+            - "beatmap_id" : int
+            - "scores": list of dicts for every score of a player. Main keys:
+                - "score"
+                - "user_id"
+                - "mods"
+                - "accuracy"
+        user_dict: dict - user information. Key is an id of the player, values are:
+            - "username"
+            - "score_sum"
+            - "average_score"
+            - "played_maps": dict of beatmaps, that the player has played. Key is beatmap_id, values are:
+                - "score"
+                - "mods"
+                - and so on
+    """
+    if not debug and not match_arg:
         print("Вставьте ссылку на матч")
         match_url = input()  # https://osu.ppy.sh/community/matches/111534249
-        if '/' in match_url:
-            match_id = re.findall('matches\/\d+', match_url)
-            if len(match_id) < 1:
-                print("Неверная ссылка на матч!")
-                return
-            match_id = int(match_id[0].split('/')[1])  # example: 'matches/113456' -> 113456: int
-        else:
-            match_id = int(match_url)
     else:
-        match_id = match_id_arg if match_id_arg else 111555364
+        match_url = match_arg if match_arg else 111555364
 
+    if '/' in match_url:
+        match_id = re.findall('matches/\d+', match_url)
+        if len(match_id) < 1:
+            print("Неверная ссылка на матч!")
+            return
+        match_id = int(match_id[0].split('/')[1])  # example: 'matches/113456' -> 113456: int
+    else:
+        match_id = int(match_url)
     with open("secrets.json", "r") as file:
         secrets = json.loads(file.read())
     token = requests.post("https://osu.ppy.sh/oauth/token",
@@ -29,7 +56,8 @@ def parse_mplink(match_id_arg=None, warmups=0, skip_last=0, verbose=True):
                                    "Content-Type": "application/x-www-form-urlencoded"})  #
     if token.status_code != 200:
         print("Программа не смогла обратиться к API osu, проверьте интернет соединение или настройки json файла")
-        raise ValueError("Программа не смогла обратиться к API osu, проверьте интернет соединение или настройки json файла")
+        raise ValueError(
+            "Программа не смогла обратиться к API osu, проверьте интернет соединение или настройки json файла")
 
     access_token = token.json()["access_token"]
 
@@ -59,7 +87,7 @@ def parse_mplink(match_id_arg=None, warmups=0, skip_last=0, verbose=True):
         event_id = match_info_json['events'][-1]['id']
         for event in match_info_json['events']:
             if event['detail']['type'] == 'other' and len(event['game']['scores']) > 0:
-                scores_struct = event['game']['scores']  #  .update({"beatmap_id": all_scores['game']['beatmap_id']})
+                scores_struct = event['game']['scores']
                 scores_struct = {"scores": scores_struct, "beatmap_id": event['game']['beatmap_id']}
                 all_scores.append(scores_struct)
     # обработка полученных результатов + warmup/skip_last
@@ -107,13 +135,35 @@ def parse_mplink(match_id_arg=None, warmups=0, skip_last=0, verbose=True):
     return scores_to_return, user_dict
 
 
-def parse_scrim(match_id_arg=None, warmups=0, skip_last=0, verbose=True):
-    if not debug and not match_id_arg:
+def parse_scrim(match_arg=None, warmups=0, skip_last=0, verbose=True):
+    """
+    Parse a scrim (1vs1) match, using the parse_mplink function
+    :param match_arg:
+        URL/ID to a match
+    :param warmups:
+        number of warmups (amount of maps that will be skipped from beginning)
+    :param skip_last:
+        amount of maps that
+    :param verbose:
+        will or will not the additional information be printed
+    :return:
+        final_result: list (in json format).
+        It consists of performance by two best players (if the number of players > 2).
+        If the number of players < 2, returns None
+            - index 0 (player that won) : tuple
+                - user_id
+                - user_info: dict
+                    - "maps_won"
+                    - "average_score"
+                    - ...
+            - index 1 (player that lose or tied): tuple - structure is the same as index 0
+    """
+    if not debug and not match_arg:
         print("Вставьте ссылку на матч")
         match_url = input()  # https://osu.ppy.sh/community/matches/111534249
         match_id = match_url.split("/")[-1]
     else:
-        match_id = match_id_arg if match_id_arg else 111534249
+        match_id = match_arg if match_arg else 111534249
 
     scores_info, user_dict = parse_mplink(match_id, warmups, skip_last, verbose=False)
     for user_id, user_info in user_dict.items():
@@ -175,5 +225,12 @@ if __name__ == "__main__":
     """
     # get_user_by_username("Boriska")
     # parse_mplink(warmups=0, skip_last=0)
-    final_result = json.loads(parse_scrim(verbose=False))
-    print(f"{final_result[0][1]['username']} {final_result[0][1]['maps_won']} - {final_result[1][1]['maps_won']} {final_result[1][1]['username']}")
+    matches = ["https://osu.ppy.sh/community/matches/114155474", "https://osu.ppy.sh/community/matches/114155177",
+               "https://osu.ppy.sh/community/matches/114131550", "https://osu.ppy.sh/community/matches/113799771",
+               "https://osu.ppy.sh/community/matches/113690530", "https://osu.ppy.sh/community/matches/113343257",
+               "https://osu.ppy.sh/community/matches/113101878", "https://osu.ppy.sh/community/matches/113069141",
+               "https://osu.ppy.sh/community/matches/112981168"]
+    for match in matches:
+        result = json.loads(parse_scrim(match_arg=match, verbose=False))
+        print(f"{result[0][1]['username']} {result[0][1]['maps_won']} - {result[1][1]['maps_won']} "
+              f"{result[1][1]['username']}")
