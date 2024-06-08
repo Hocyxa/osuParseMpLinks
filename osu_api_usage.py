@@ -2,11 +2,11 @@ import requests
 import json
 import re
 
-debug = False
+debug = True
 
 
-def parse_mplink(warmups=0, skip_last=0):
-    if not debug:
+def parse_mplink(match_id_arg=None, warmups=0, skip_last=0, verbose=True):
+    if not debug and not match_id_arg:
         print("Вставьте ссылку на матч")
         match_url = input()  # https://osu.ppy.sh/community/matches/111534249
         if '/' in match_url:
@@ -18,7 +18,7 @@ def parse_mplink(warmups=0, skip_last=0):
         else:
             match_id = int(match_url)
     else:
-        match_id = 111555364
+        match_id = match_id_arg if match_id_arg else 111555364
 
     with open("secrets.json", "r") as file:
         secrets = json.loads(file.read())
@@ -29,7 +29,7 @@ def parse_mplink(warmups=0, skip_last=0):
                                    "Content-Type": "application/x-www-form-urlencoded"})  #
     if token.status_code != 200:
         print("Программа не смогла обратиться к API osu, проверьте интернет соединение или настройки json файла")
-        exit(-1)
+        raise ValueError("Программа не смогла обратиться к API osu, проверьте интернет соединение или настройки json файла")
 
     access_token = token.json()["access_token"]
 
@@ -37,7 +37,7 @@ def parse_mplink(warmups=0, skip_last=0):
                                   headers={"Authorization": f"Bearer {access_token}"})
     if match_info_raw.status_code != 200:
         print("Неверная ссылка на матч :( ")
-        exit(-1)
+        raise ValueError("Неверная ссылка на матч :(")
     match_info_json = match_info_raw.json()
     user_dict = dict()
     for user in match_info_json["users"]:
@@ -52,6 +52,10 @@ def parse_mplink(warmups=0, skip_last=0):
         match_info_raw = requests.get(f"https://osu.ppy.sh/api/v2/matches/{match_id}?after={event_id}",
                                       headers={"Authorization": f"Bearer {access_token}"})
         match_info_json = match_info_raw.json()
+        for user in match_info_json["users"]:
+            user_id = user["id"]
+            if user_id not in user_dict:
+                user_dict[user_id] = {"username": user["username"], "score_sum": 0, 'played_maps': {}}
         event_id = match_info_json['events'][-1]['id']
         for event in match_info_json['events']:
             if event['detail']['type'] == 'other' and len(event['game']['scores']) > 0:
@@ -61,6 +65,7 @@ def parse_mplink(warmups=0, skip_last=0):
     # обработка полученных результатов + warmup/skip_last
     parsed = 0
     to_parse = len(all_scores)
+    scores_to_return = []
     for score_struct in all_scores:
         parsed += 1
         if parsed > to_parse - skip_last:
@@ -68,6 +73,7 @@ def parse_mplink(warmups=0, skip_last=0):
         if warmups > 0:
             warmups -= 1
             continue
+        scores_to_return.append(score_struct)
         beatmap_id = score_struct['beatmap_id']
         scores = score_struct['scores']
         for score in scores:
@@ -92,22 +98,25 @@ def parse_mplink(warmups=0, skip_last=0):
         else:
             user_dict_username["average_score"] = 0
     sorted_list_by_average = sorted(user_dict.items(), key=lambda item: item[1]["average_score"], reverse=True)
-    for user_id, user_details in sorted_list_by_average:
-        print(f"avg.score: {user_details['average_score']}, "
-              f"match_cost: {user_details['average_score'] / matchcost_etalon}, "
-              f"played maps: {len(user_details['played_maps'])} "
-              f"score sum: {user_details['score_sum']}  by {user_details['username']}, user id: {user_id}")
+    if verbose:
+        for user_id, user_details in sorted_list_by_average:
+            print(f"avg.score: {user_details['average_score']}, "
+                  f"match_cost: {user_details['average_score'] / matchcost_etalon}, "
+                  f"played maps: {len(user_details['played_maps'])} "
+                  f"score sum: {user_details['score_sum']}  by {user_details['username']}, user id: {user_id}")
+    return scores_to_return, user_dict
 
 
-def parse_scrim(warmups=0):
-    if not debug:
+def parse_scrim(match_id_arg=None, warmups=0, skip_last=0, verbose=True):
+    if not debug and not match_id_arg:
         print("Вставьте ссылку на матч")
         match_url = input()  # https://osu.ppy.sh/community/matches/111534249
         match_id = match_url.split("/")[-1]
     else:
-        match_id = 111534249
+        match_id = match_id_arg if match_id_arg else 111534249
 
-    with open("secrets.json", "r") as file:
+    scores_info, user_dict = parse_mplink(match_id, warmups, skip_last, verbose=False)
+    """with open("secrets.json", "r") as file:
         secrets = json.loads(file.read())
     token = requests.post("https://osu.ppy.sh/oauth/token",
                           data="client_id={}&client_secret={}&grant_type=client_credentials&scope=public"
@@ -126,13 +135,22 @@ def parse_scrim(warmups=0):
         print("Неверная ссылка на матч :( ")
         exit(-1)
     match_info_json = match_info_raw.json()
-    user_dict = dict()
-    for user in match_info_json["users"]:
-        user_dict[user["id"]] = {"username": user["username"], "maps_won": 0}
+    user_dict = dict()"""
+    for user_id, user_info in user_dict.items():
+        user_dict[user_id].update({"maps_won": 0})
+        # user_dict[user["id"]] = {"username": user["username"], "maps_won": 0}
 
-    maps_played = 0
+    maps_played = len(scores_info)
     # matchcost_etalon = 5 * (10**5)
-    for event in match_info_json["events"]:
+    for score_info in scores_info:  # score: {"beatmap_id": ..., "scores": [...]}
+        scores = score_info['scores']
+        scores.sort(key=lambda x: x['score'], reverse=True)
+        if len(scores) < 2:
+            continue
+        player_won_map_id = scores[0]['user_id']
+        user_dict[player_won_map_id]['maps_won'] += 1
+
+    """for event in match_info_json["events"]:
         if event['detail']['type'] == 'other':
             if len(event['game']['scores']) > 0:
                 maps_played += 1
@@ -141,9 +159,10 @@ def parse_scrim(warmups=0):
                 if len(sorted_scores) < 2:
                     continue
                 player_won_map_id = sorted_scores[0]["user_id"]
-                user_dict[player_won_map_id]["maps_won"] += 1
-    print(user_dict)
-    print("Maps played: {}".format(maps_played))
+                user_dict[player_won_map_id]["maps_won"] += 1"""
+    if verbose:
+        print(user_dict)
+        print("Maps played: {}".format(maps_played))
     final_result = sorted(user_dict.items(), key=lambda pair: pair[1]["maps_won"], reverse=True)
     if len(final_result) < 2:
         return None
@@ -197,5 +216,6 @@ if __name__ == "__main__":
         json.dump(players, f, ensure_ascii=False, indent=4)
     """
     # get_user_by_username("Boriska")
-    parse_mplink(warmups=0, skip_last=0)
-    # parse_scrim()
+    # parse_mplink(warmups=0, skip_last=0)
+    final_result = json.loads(parse_scrim(verbose=False))
+    print(f"{final_result[0][1]['username']} {final_result[0][1]['maps_won']} - {final_result[1][1]['maps_won']} {final_result[1][1]['username']}")
