@@ -5,7 +5,7 @@ import re
 debug = False
 
 
-def parse_mplink(warmups=0):
+def parse_mplink(warmups=0, skip_last=0):
     if not debug:
         print("Вставьте ссылку на матч")
         match_url = input()  # https://osu.ppy.sh/community/matches/111534249
@@ -58,8 +58,13 @@ def parse_mplink(warmups=0):
                 scores_struct = event['game']['scores']  #  .update({"beatmap_id": all_scores['game']['beatmap_id']})
                 scores_struct = {"scores": scores_struct, "beatmap_id": event['game']['beatmap_id']}
                 all_scores.append(scores_struct)
-    # обработка полученных результатов
+    # обработка полученных результатов + warmup/skip_last
+    parsed = 0
+    to_parse = len(all_scores)
     for score_struct in all_scores:
+        parsed += 1
+        if parsed > to_parse - skip_last:
+            break
         if warmups > 0:
             warmups -= 1
             continue
@@ -192,5 +197,5 @@ if __name__ == "__main__":
         json.dump(players, f, ensure_ascii=False, indent=4)
     """
     # get_user_by_username("Boriska")
-    parse_mplink(warmups=0)
+    parse_mplink(warmups=0, skip_last=0)
     # parse_scrim()
