@@ -204,9 +204,7 @@ def parse_scrim(secrets, match_arg=None, warmups=0, skip_last=0, verbose=True):
     return json.dumps(final_result)
 
 
-def get_user_id_by_username(username):
-    with open("secrets.json", "r") as file:
-        secrets = json.loads(file.read())
+def get_user_id_by_username(secrets: dict, username: str):
     token = requests.post("https://osu.ppy.sh/oauth/token",
                           data="client_id={}&client_secret={}&grant_type=client_credentials&scope=public"
                           .format(secrets["client_id"], secrets["client_secret"]),
