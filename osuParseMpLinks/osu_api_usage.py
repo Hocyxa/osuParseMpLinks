@@ -5,9 +5,17 @@ import re
 debug = False
 
 
-def parse_mplink(match_arg=None, warmups=0, skip_last=0, verbose=True):
+def parse_mplink(secrets: dict, match_arg=None, warmups=0, skip_last=0, verbose=True):
     """
     Parse a mp link and give information about avg_score
+    :param secrets:
+        dict of client_id and client_secret for osu API. The dict is REQUIRED to contain "client_id" and "client_secret"
+        keys.
+        example:
+            secrets = {}
+            secrets["client_id"] = 0
+            secrets["client_secret"] = "client_secret_hiii"
+            parse_mplink(secrets, ...)
     :param match_arg:
         URL/ID to a match
     :param warmups:
@@ -47,8 +55,7 @@ def parse_mplink(match_arg=None, warmups=0, skip_last=0, verbose=True):
         match_id = int(match_id[0].split('/')[1])  # example: 'matches/113456' -> 113456: int
     else:
         match_id = int(match_url)
-    with open("secrets.json", "r") as file:
-        secrets = json.loads(file.read())
+
     token = requests.post("https://osu.ppy.sh/oauth/token",
                           data="client_id={}&client_secret={}&grant_type=client_credentials&scope=public"
                           .format(secrets["client_id"], secrets["client_secret"]),
@@ -135,9 +142,17 @@ def parse_mplink(match_arg=None, warmups=0, skip_last=0, verbose=True):
     return scores_to_return, user_dict
 
 
-def parse_scrim(match_arg=None, warmups=0, skip_last=0, verbose=True):
+def parse_scrim(secrets, match_arg=None, warmups=0, skip_last=0, verbose=True):
     """
     Parse a scrim (1vs1) match, using the parse_mplink function
+        :param secrets:
+        dict of client_id and client_secret for osu API. The dict is REQUIRED to contain "client_id" and "client_secret"
+        keys.
+        example:
+            secrets = {}
+            secrets["client_id"] = 0
+            secrets["client_secret"] = "client_secret_hiii"
+            parse_scrim(secrets, ...)
     :param match_arg:
         URL/ID to a match
     :param warmups:
@@ -165,7 +180,7 @@ def parse_scrim(match_arg=None, warmups=0, skip_last=0, verbose=True):
     else:
         match_id = match_arg if match_arg else 111534249
 
-    scores_info, user_dict = parse_mplink(match_id, warmups, skip_last, verbose=False)
+    scores_info, user_dict = parse_mplink(secrets, match_id, warmups, skip_last, verbose=False)
     for user_id, user_info in user_dict.items():
         user_dict[user_id].update({"maps_won": 0})
 
@@ -213,6 +228,8 @@ def get_user_id_by_username(username):
 
 
 if __name__ == "__main__":
+    with open("secrets.json", "r") as file:
+        creds = json.loads(file.read())
     """
     with open("data_new.json", "r") as file:
         players = json.loads(file.read())
@@ -224,7 +241,7 @@ if __name__ == "__main__":
         json.dump(players, f, ensure_ascii=False, indent=4)
     """
     # get_user_by_username("Boriska")
-    parse_mplink(warmups=0, skip_last=0)
+    parse_mplink(creds, warmups=0, skip_last=0)
 
     """matches = ["https://osu.ppy.sh/community/matches/114155474", "https://osu.ppy.sh/community/matches/114155177",
                "https://osu.ppy.sh/community/matches/114131550", "https://osu.ppy.sh/community/matches/113799771",
