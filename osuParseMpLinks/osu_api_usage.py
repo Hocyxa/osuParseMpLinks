@@ -204,7 +204,7 @@ def parse_scrim(secrets, match_arg=None, warmups=0, skip_last=0, verbose=True):
     return json.dumps(final_result)
 
 
-def get_user_id_by_username(secrets: dict, username: str):
+def get_user_data_by_username_or_id(secrets: dict, username_or_id: str):
     token = requests.post("https://osu.ppy.sh/oauth/token",
                           data="client_id={}&client_secret={}&grant_type=client_credentials&scope=public"
                           .format(secrets["client_id"], secrets["client_secret"]),
@@ -215,14 +215,14 @@ def get_user_id_by_username(secrets: dict, username: str):
         exit(-1)
     access_token = token.json()["access_token"]
 
-    user_info_raw = requests.get("https://osu.ppy.sh/api/v2/users/{}/osu".format(username),
+    user_info_raw = requests.get("https://osu.ppy.sh/api/v2/users/{}/osu".format(username_or_id),
                                  headers={"Authorization": "Bearer {}".format(access_token)})
     if user_info_raw.status_code != 200:
-        print("Неверный username :( ")
+        print("Неверный username или id ! :( ")
         exit(-1)
 
     user_info = user_info_raw.json()
-    return user_info['id']
+    return user_info
 
 
 if __name__ == "__main__":
@@ -238,7 +238,7 @@ if __name__ == "__main__":
     with open('data_new.json', 'w', encoding='utf-8') as f:
         json.dump(players, f, ensure_ascii=False, indent=4)
     """
-    # get_user_by_username("Boriska")
+    # get_user_data_by_username_or_id(creds, "6560308")
     parse_mplink(creds, warmups=0, skip_last=0)
 
     """matches = ["https://osu.ppy.sh/community/matches/114155474", "https://osu.ppy.sh/community/matches/114155177",
