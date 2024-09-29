@@ -1,71 +1,101 @@
 package osuParseMpLinks
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 )
 
-type secretData struct {
-	Client_id     string
-	Client_secret string
+type HttpClient struct {
+	AccessToken string
+	Client      *http.Client
 }
 
-func (data secretData) getClientId() string {
-	return data.Client_id
+func NewHttpClient() HttpClient {
+	return HttpClient{
+		"DefaultToken",
+		&http.Client{},
+	}
 }
-func (data secretData) getClientSecret() string {
-	return data.Client_secret
-}
-func NewSecretData() secretData {
 
-	jsonFile, err := os.Open("osu_api_usage/secrets.json")
+func (client *HttpClient) UpdateToken() {
+	secretData := NewSecretData()
+	jsonData, err := json.Marshal(secretData)
 	if err != nil {
 		panic(err)
 	}
-	defer jsonFile.Close()
-
-	byteValue, _ := io.ReadAll(jsonFile)
-	var data *secretData
-	json.Unmarshal(byteValue, &data)
-
-	return secretData{
-		data.getClientId(),
-		data.getClientSecret(),
-	}
-}
-
-type HttpClient struct {
-	MgAPIKey string
-	Client   *http.Client
-}
-
-func NewHttpClient(apikey string) HttpClient {
-	return HttpClient{
-		apikey,
-		http.DefaultClient,
-	}
-}
-
-func GetToken() {
-	secret_data := NewSecretData()
 
 	url := "https://osu.ppy.sh/oauth/token"
 
-	req, err := http.NewRequest("POST", url, nil)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		panic(err)
 	}
 	q := req.URL.Query()
-	q.Add("client_id", secret_data.getClientId())
-	q.Add("client_secret", secret_data.getClientSecret())
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Content-Type", "application/json")
 	req.URL.RawQuery = q.Encode()
-	//TODO найти как поменять шапку и отослать запрос с проверкой токена
-	fmt.Println(req.URL.String())
+
+	resp, err := client.Client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	var data map[string]interface{}
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		panic(err)
+	}
+
+	client.AccessToken = data["token_type"].(string) + " " + data["access_token"].(string)
 }
 
-func Get_user_data_by_username_or_id() {
-	print("get_user_data_by_username_or_id")
+func (client *HttpClient) reqUserData(usernameOrId string) (*http.Response, error) {
+	url := fmt.Sprintf("https://osu.ppy.sh/api/v2/users/%s/osu", usernameOrId)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		panic(err)
+	}
+	q := req.URL.Query()
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Authorization", client.AccessToken)
+	req.URL.RawQuery = q.Encode()
+
+	return client.Client.Do(req)
+}
+
+func (client *HttpClient) GetUserDataByUsernameOrId(usernameOrId string) map[string]interface{} {
+	// получить данные юзера
+	resp, err := client.reqUserData(usernameOrId)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	if resp.Status == "401" {
+		client.UpdateToken()
+		resp, err := client.reqUserData(usernameOrId)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	var data map[string]interface{}
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
